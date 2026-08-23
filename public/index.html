@@ -1,1 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Live-Sync Sticky Board</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<style>
+  :root {
+    --bg: #eef1f5;
+    --board-border: #d7dce3;
+    --ink: #2b2f38;
+    --accent: #4b6bfb;
+    --warn: #ff9500;
+    --warn-bg: #fff4e5;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 22px;
+    background: white;
+    border-bottom: 1px solid var(--board-border);
+  }
+  header h1 {
+    font-size: 18px;
+    margin: 0;
+  }
+  .status {
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #ccc;
+  }
+  .dot.connected { background: #34c759; }
+  .dot.disconnected { background: #ff3b30; }
+  .toolbar {
+    padding: 12px 22px;
+  }
+  button.add-btn {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  button.add-btn:hover { opacity: 0.9; }
+  #board {
+    position: relative;
+    margin: 0 22px 22px 22px;
+    height: 70vh;
+    background: white;
+    border: 2px dashed var(--board-border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .note {
+    position: absolute;
+    width: 190px;
+    min-height: 150px;
+    padding: 10px;
+    border-radius: 4px;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+    cursor: grab;
+    display: flex;
+    flex-direction: column;
+    user-select: none;
+    transition: box-shadow 0.15s ease;
+  }
+  .note.dragging { cursor: grabbing; opacity: 0.85; }
+  .note.remote-editing {
+    box-shadow: 0 0 0 2px var(--warn), 0 3px 8px rgba(0,0,0,0.15);
+  }
+  .note textarea {
+    flex: 1;
+    resize: none;
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: 14px;
+    outline: none;
+    margin-top: 4px;
+    cursor: text;
+  }
+  .note .note-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    min-height: 14px;
+  }
+  .note .badge {
+    font-size: 10px;
+    background: var(--warn);
+    color: white;
+    padding: 1px 6px;
+    border-radius: 8px;
+  }
+  .note button.del {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    opacity: 0.6;
+  }
+  .note button.del:hover { opacity: 1; }
+  .conflict-banner {
+    background: var(--warn-bg);
+    border: 1px solid var(--warn);
+    border-radius: 4px;
+    padding: 6px;
+    font-size: 11px;
+    margin-top: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .conflict-banner .actions {
+    display: flex;
+    gap: 6px;
+  }
+  .conflict-banner button {
+    font-size: 11px;
+    padding: 3px 6px;
+    border-radius: 3px;
+    border: 1px solid var(--warn);
+    background: white;
+    cursor: pointer;
+  }
+  .conflict-banner button:hover { background: var(--warn); color: white; }
+  footer {
+    text-align: center;
+    font-size: 12px;
+    color: #8a8f99;
+    padding-bottom: 16px;
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
 
+<!-- React 18 + Babel standalone: lets us write JSX with zero build tooling -->
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+function useWebSocket(onMessage) {
+  const wsRef = useRef(null);
+  const [connected, setConnected] = useState(false);
+
+  useEffect(() => {
+    function connect() {
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const ws = new WebSocket(`${protocol}//${window.location.host}`);
+      wsRef.current = ws;
+
+      ws.onopen = () => setConnected(true);
+      ws.onclose = () => {
+        setConnected(false);
+        setTimeout(connect, 1500); // simple auto-reconnect
+      };
+      ws.onerror = () => ws.close();
+      ws.onmessage = (event) => {
+        try {
+          onMessage(JSON.parse(event.data));
+        } catch (e) {
+          console.error("Bad message from server", e);
+        }
+      };
+    }
+    connect();
+    return () => { if (wsRef.current) wsRef.current.close(); };
+  }, [onMessage]);
+
+  const send = useCallback((payload) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(payload));
+    }
+  }, []);
+
+  return { send, connected };
+}
+
+function StickyNote({ note, isRemoteEditing, conflict, onDrag, onDragStart, onEdit,
+                       onFocus, onBlur, onDelete, onResolveConflict }) {
+  const dragState = useRef(null);
+
+  const handlePointerDown = (e) => {
+    if (e.target.tagName === "TEXTAREA" || e.target.tagName === "BUTTON") return;
+    dragState.current = { startX: e.clientX, startY: e.clientY, origX: note.x, origY: note.y };
+    onDragStart(note.id);
+    e.target.setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e) => {
+    if (!dragState.current) return;
+    const dx = e.clientX - dragState.current.startX;
+    const dy = e.clientY - dragState.current.startY;
+    onDrag(note.id, dragState.current.origX + dx, dragState.current.origY + dy);
+  };
+
+  const handlePointerUp = () => { dragState.current = null; };
+
+  return (
+    <div
+      className={`note${isRemoteEditing ? " remote-editing" : ""}`}
+      style={{ left: note.x, top: note.y, background: note.color, zIndex: note.z }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+    >
+      <div className="note-top">
+        {isRemoteEditing ? <span className="badge">someone's typing</span> : <span />}
+        <button className="del" onClick={() => onDelete(note.id)} title="Delete note">✕</button>
+      </div>
+      <textarea
+        value={note.text}
+        placeholder="Type something..."
+        onFocus={() => onFocus(note.id)}
+        onBlur={() => onBlur(note.id)}
+        onChange={(e) => onEdit(note.id, e.target.value)}
+      />
+      {conflict && (
+        <div className="conflict-banner">
+          <div>⚠️ Edited elsewhere while you were typing. Their version is shown above.</div>
+          <div className="actions">
+            <button onClick={() => onResolveConflict(note.id, "keepMine", conflict.attemptedText)}>
+              Keep my text
+            </button>
+            <button onClick={() => onResolveConflict(note.id, "dismiss")}>Dismiss</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function App() {
+  const [notes, setNotes] = useState({});
+  const [editingBy, setEditingBy] = useState({});   // noteId -> remote clientId currently editing
+  const [conflicts, setConflicts] = useState({});   // noteId -> { attemptedText }
+  const boardRef = useRef(null);
+  const myClientId = useRef(null);
+  const focusedNoteId = useRef(null);   // which note THIS tab currently has focused
+  const draggingId = useRef(null);      // which note THIS tab is currently dragging
+  const debounceTimers = useRef({});
+
+  const handleMessage = useCallback((msg) => {
+    switch (msg.type) {
+      case "sync":
+        myClientId.current = msg.clientId;
+        setNotes(msg.notes);
+        setEditingBy(msg.editingBy || {});
+        break;
+
+      case "add":
+        setNotes((prev) => ({ ...prev, [msg.note.id]: msg.note }));
+        break;
+
+      case "move":
+        setNotes((prev) => {
+          // ignore remote moves for a note we're actively dragging ourselves
+          if (draggingId.current === msg.id) return prev;
+          if (!prev[msg.id]) return prev;
+          return { ...prev, [msg.id]: { ...prev[msg.id], x: msg.x, y: msg.y, z: msg.z } };
+        });
+        break;
+
+      case "edit":
+        setNotes((prev) => {
+          if (!prev[msg.id]) return prev;
+          // If WE are actively typing in this note, don't yank the text out from
+          // under the user's cursor -- just update the version so our next send
+          // compares against the latest, and let edit-rejected handle true conflicts.
+          if (focusedNoteId.current === msg.id) {
+            return { ...prev, [msg.id]: { ...prev[msg.id], version: msg.version } };
+          }
+          return { ...prev, [msg.id]: { ...prev[msg.id], text: msg.text, version: msg.version } };
+        });
+        break;
+
+      case "edit-ack":
+        setNotes((prev) =>
+          prev[msg.id] ? { ...prev, [msg.id]: { ...prev[msg.id], version: msg.version } } : prev
+        );
+        break;
+
+      case "edit-rejected":
+        // Someone else's edit won since we last synced. Show their text + a banner
+        // instead of silently discarding what we typed.
+        setNotes((prev) =>
+          prev[msg.id]
+            ? { ...prev, [msg.id]: { ...prev[msg.id], text: msg.text, version: msg.version } }
+            : prev
+        );
+        setConflicts((prev) => ({ ...prev, [msg.id]: { attemptedText: msg.attemptedText } }));
+        break;
+
+      case "delete":
+        setNotes((prev) => { const n = { ...prev }; delete n[msg.id]; return n; });
+        break;
+
+      case "editing-start":
+        if (msg.clientId !== myClientId.current) {
+          setEditingBy((prev) => ({ ...prev, [msg.id]: msg.clientId }));
+        }
+        break;
+
+      case "editing-end":
+        setEditingBy((prev) => {
+          if (prev[msg.id] !== msg.clientId) return prev;
+          const next = { ...prev };
+          delete next[msg.id];
+          return next;
+        });
+        break;
+
+      default:
+        break;
+    }
+  }, []);
+
+  const { send, connected } = useWebSocket(handleMessage);
+
+  const addNote = () => {
+    const board = boardRef.current;
+    const x = board ? Math.random() * Math.max(board.clientWidth - 210, 20) : 40;
+    const y = board ? Math.random() * Math.max(board.clientHeight - 170, 20) : 40;
+    send({ type: "add", x, y });
+  };
+
+  const dragStart = (id) => { draggingId.current = id; };
+
+  const dragNote = (id, x, y) => {
+    setNotes((prev) => (prev[id] ? { ...prev, [id]: { ...prev[id], x, y } } : prev));
+    send({ type: "move", id, x, y });
+  };
+
+  const focusNote = (id) => {
+    focusedNoteId.current = id;
+    send({ type: "editing-start", id });
+  };
+
+  const blurNote = (id) => {
+    if (focusedNoteId.current === id) focusedNoteId.current = null;
+    send({ type: "editing-end", id });
+  };
+
+  const editNote = (id, text) => {
+    setNotes((prev) => (prev[id] ? { ...prev, [id]: { ...prev[id], text } } : prev));
+
+    // debounce network sends while typing; always send the LATEST text+version
+    clearTimeout(debounceTimers.current[id]);
+    debounceTimers.current[id] = setTimeout(() => {
+      setNotes((current) => {
+        const note = current[id];
+        if (note) send({ type: "edit", id, text: note.text, baseVersion: note.version });
+        return current;
+      });
+    }, 300);
+  };
+
+  const resolveConflict = (id, choice, attemptedText) => {
+    if (choice === "keepMine") {
+      setNotes((prev) => {
+        const note = prev[id];
+        if (note) send({ type: "edit-force", id, text: attemptedText });
+        return prev;
+      });
+    }
+    setConflicts((prev) => { const n = { ...prev }; delete n[id]; return n; });
+  };
+
+  const deleteNote = (id) => {
+    setNotes((prev) => { const n = { ...prev }; delete n[id]; return n; });
+    send({ type: "delete", id });
+  };
+
+  return (
+    <React.Fragment>
+      <header>
+        <h1>🗒️ Live-Sync Sticky Board</h1>
+        <div className="status">
+          <span className={`dot ${connected ? "connected" : "disconnected"}`}></span>
+          {connected ? "Connected" : "Reconnecting..."}
+        </div>
+      </header>
+      <div className="toolbar">
+        <button className="add-btn" onClick={addNote}>+ Add Sticky Note</button>
+      </div>
+      <div id="board" ref={boardRef}>
+        {Object.values(notes).map((note) => (
+          <StickyNote
+            key={note.id}
+            note={note}
+            isRemoteEditing={!!editingBy[note.id]}
+            conflict={conflicts[note.id]}
+            onDrag={dragNote}
+            onDragStart={dragStart}
+            onEdit={editNote}
+            onFocus={focusNote}
+            onBlur={blurNote}
+            onDelete={deleteNote}
+            onResolveConflict={resolveConflict}
+          />
+        ))}
+      </div>
+      <footer>
+        Open this page in another tab — notes you add, move, or type here sync live.
+        Reload a tab or restart the server: your board is still there.
+      </footer>
+    </React.Fragment>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
