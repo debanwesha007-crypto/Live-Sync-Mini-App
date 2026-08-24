@@ -1,1 +1,861 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Live-Sync Sticky Board</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-1: #eef2ff;
+    --bg-2: #e0f2fe;
+    --ink: #1e2338;
+    --ink-soft: #5b6178;
+    --card: #ffffff;
+    --border: #e3e7f1;
+    --accent: #5b6bf5;
+    --accent-dark: #4653d6;
+    --danger: #e5484d;
+    --warn: #f5a524;
+    --warn-bg: #fff7e6;
+    --radius: 14px;
+    --shadow-sm: 0 1px 3px rgba(20, 24, 40, 0.08);
+    --shadow-md: 0 8px 24px rgba(30, 35, 65, 0.10);
+    --shadow-lg: 0 20px 50px rgba(30, 35, 65, 0.16);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: var(--ink);
+    background: radial-gradient(circle at 15% 0%, var(--bg-2), transparent 55%),
+                radial-gradient(circle at 85% 10%, var(--bg-1), transparent 50%),
+                #f7f8fc;
+    min-height: 100vh;
+  }
+  button { font-family: inherit; }
 
+  /* ---------- Login / Register ---------- */
+  .auth-wrap {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .auth-card {
+    background: var(--card);
+    border-radius: 20px;
+    box-shadow: var(--shadow-lg);
+    padding: 36px 32px;
+    width: 100%;
+    max-width: 380px;
+    border: 1px solid var(--border);
+  }
+  .auth-logo {
+    font-size: 30px;
+    text-align: center;
+    margin-bottom: 4px;
+  }
+  .auth-card h1 {
+    font-size: 20px;
+    text-align: center;
+    margin: 0 0 4px;
+  }
+  .auth-card p.sub {
+    text-align: center;
+    color: var(--ink-soft);
+    font-size: 13.5px;
+    margin: 0 0 24px;
+  }
+  .field { margin-bottom: 14px; }
+  .field label {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ink-soft);
+    margin-bottom: 6px;
+  }
+  .field input {
+    width: 100%;
+    padding: 11px 13px;
+    border-radius: 10px;
+    border: 1.5px solid var(--border);
+    font-size: 14.5px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+  .field input:focus { border-color: var(--accent); }
+  .auth-submit {
+    width: 100%;
+    padding: 12px;
+    border: none;
+    border-radius: 10px;
+    background: var(--accent);
+    color: white;
+    font-size: 14.5px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 6px;
+    transition: background 0.15s ease;
+  }
+  .auth-submit:hover { background: var(--accent-dark); }
+  .auth-submit:disabled { opacity: 0.6; cursor: default; }
+  .auth-error {
+    background: #fdecec;
+    color: var(--danger);
+    font-size: 13px;
+    padding: 9px 12px;
+    border-radius: 8px;
+    margin-bottom: 14px;
+  }
+  .auth-toggle {
+    text-align: center;
+    margin-top: 18px;
+    font-size: 13.5px;
+    color: var(--ink-soft);
+  }
+  .auth-toggle button {
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 13.5px;
+    padding: 0;
+  }
+
+  /* ---------- Board layout ---------- */
+  header.appbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 24px;
+    background: rgba(255,255,255,0.85);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand .emoji { font-size: 22px; }
+  .brand h1 { font-size: 17px; margin: 0; font-weight: 700; }
+  .status {
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #ccc; }
+  .dot.connected { background: #34c759; }
+  .dot.disconnected { background: var(--danger); }
+
+  .user-chip {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .avatar {
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 13px;
+    flex-shrink: 0;
+  }
+  .logout-btn {
+    border: 1.5px solid var(--border);
+    background: white;
+    padding: 7px 12px;
+    border-radius: 8px;
+    font-size: 12.5px;
+    cursor: pointer;
+    color: var(--ink-soft);
+  }
+  .logout-btn:hover { border-color: var(--danger); color: var(--danger); }
+
+  .toolbar {
+    padding: 16px 24px 0;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  button.add-btn {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+  }
+  button.add-btn:hover { background: var(--accent-dark); }
+  .notif-hint {
+    font-size: 12.5px;
+    color: var(--ink-soft);
+  }
+  .notif-hint button {
+    background: none; border: none; color: var(--accent);
+    font-weight: 600; cursor: pointer; font-size: 12.5px; padding: 0;
+  }
+
+  #board {
+    position: relative;
+    margin: 16px 24px 28px;
+    min-height: 68vh;
+    background: var(--card);
+    border: 1.5px dashed var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  /* Mobile: freeform absolute board becomes a simple stacked, scrollable list */
+  #board.mobile {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px;
+    min-height: auto;
+  }
+
+  .note {
+    position: absolute;
+    width: 200px;
+    min-height: 160px;
+    padding: 12px;
+    border-radius: 12px;
+    box-shadow: var(--shadow-md);
+    cursor: grab;
+    display: flex;
+    flex-direction: column;
+    user-select: none;
+    transition: box-shadow 0.15s ease;
+  }
+  .note.mobile-note {
+    position: static;
+    width: 100%;
+    cursor: default;
+  }
+  .note.dragging { cursor: grabbing; opacity: 0.9; box-shadow: var(--shadow-lg); }
+  .note.remote-editing { box-shadow: 0 0 0 2px var(--warn), var(--shadow-md); }
+  .note.reminder-due { box-shadow: 0 0 0 2px var(--danger), var(--shadow-md); animation: pulse 1.6s infinite; }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 2px var(--danger), var(--shadow-md); }
+    50% { box-shadow: 0 0 0 5px rgba(229,72,77,0.35), var(--shadow-md); }
+  }
+
+  .note-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+    min-height: 20px;
+  }
+  .note-top .left-badges { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+  .badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 10px;
+    color: white;
+    white-space: nowrap;
+  }
+  .badge.editing { background: var(--warn); }
+  .badge.overdue { background: var(--danger); }
+
+  .icon-btn {
+    border: none;
+    background: rgba(0,0,0,0.06);
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+    padding: 4px 6px;
+    border-radius: 6px;
+    flex-shrink: 0;
+  }
+  .icon-btn:hover { background: rgba(0,0,0,0.12); }
+
+  .note textarea {
+    flex: 1;
+    resize: none;
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: 14px;
+    outline: none;
+    margin-top: 6px;
+    cursor: text;
+    min-height: 70px;
+  }
+
+  .reminder-row { margin-top: 6px; }
+  .reminder-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    background: rgba(255,255,255,0.6);
+    padding: 3px 8px;
+    border-radius: 8px;
+    color: var(--ink);
+  }
+  .reminder-popover {
+    margin-top: 6px;
+    background: rgba(255,255,255,0.9);
+    border-radius: 8px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .reminder-popover input[type="datetime-local"] {
+    font-size: 12px;
+    padding: 5px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    font-family: inherit;
+  }
+  .reminder-popover .actions { display: flex; gap: 6px; }
+  .reminder-popover button {
+    font-size: 11.5px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: white;
+    cursor: pointer;
+  }
+
+  .conflict-banner {
+    background: var(--warn-bg);
+    border: 1px solid var(--warn);
+    border-radius: 8px;
+    padding: 7px;
+    font-size: 11px;
+    margin-top: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .conflict-banner .actions { display: flex; gap: 6px; }
+  .conflict-banner button {
+    font-size: 11px;
+    padding: 4px 7px;
+    border-radius: 6px;
+    border: 1px solid var(--warn);
+    background: white;
+    cursor: pointer;
+  }
+  .conflict-banner button:hover { background: var(--warn); color: white; }
+
+  footer.hint {
+    text-align: center;
+    font-size: 12px;
+    color: var(--ink-soft);
+    padding-bottom: 20px;
+  }
+
+  @media (max-width: 680px) {
+    header.appbar { padding: 12px 16px; }
+    .toolbar { padding: 14px 16px 0; }
+    #board { margin: 14px 16px 22px; }
+    .brand h1 { font-size: 15.5px; }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+function initials(name) {
+  return (name || "?").trim().slice(0, 2).toUpperCase();
+}
+function fmtDateTimeLocal(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function fmtDisplay(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+/* ============================= AUTH VIEW ============================= */
+function AuthView({ onAuthenticated }) {
+  const [mode, setMode] = useState("login"); // "login" | "register"
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError("");
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/${mode === "login" ? "login" : "register"}`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Something went wrong");
+        setBusy(false);
+        return;
+      }
+      onAuthenticated(data.username);
+    } catch (err) {
+      setError("Could not reach the server. Is it running?");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="auth-wrap">
+      <div className="auth-card">
+        <div className="auth-logo">🗒️</div>
+        <h1>{mode === "login" ? "Welcome back" : "Create an account"}</h1>
+        <p className="sub">Live-Sync Sticky Board</p>
+        {error && <div className="auth-error">{error}</div>}
+        <form onSubmit={submit}>
+          <div className="field">
+            <label>Username</label>
+            <input
+              type="text"
+              value={username}
+              autoFocus
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="e.g. anwesha"
+              required
+            />
+          </div>
+          <div className="field">
+            <label>Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="At least 4 characters"
+              required
+            />
+          </div>
+          <button className="auth-submit" type="submit" disabled={busy}>
+            {busy ? "Please wait..." : mode === "login" ? "Log in" : "Sign up"}
+          </button>
+        </form>
+        <div className="auth-toggle">
+          {mode === "login" ? (
+            <React.Fragment>
+              New here? <button onClick={() => { setMode("register"); setError(""); }}>Create an account</button>
+            </React.Fragment>
+          ) : (
+            <React.Fragment>
+              Already have an account? <button onClick={() => { setMode("login"); setError(""); }}>Log in</button>
+            </React.Fragment>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================= WEBSOCKET HOOK ============================= */
+function useWebSocket(onMessage, enabled) {
+  const wsRef = useRef(null);
+  const [connected, setConnected] = useState(false);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let stopped = false;
+
+    function connect() {
+      if (stopped) return;
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const ws = new WebSocket(`${protocol}//${window.location.host}`);
+      wsRef.current = ws;
+      ws.onopen = () => setConnected(true);
+      ws.onclose = () => {
+        setConnected(false);
+        if (!stopped) setTimeout(connect, 1500);
+      };
+      ws.onerror = () => ws.close();
+      ws.onmessage = (event) => {
+        try { onMessage(JSON.parse(event.data)); } catch (e) { console.error(e); }
+      };
+    }
+    connect();
+    return () => { stopped = true; if (wsRef.current) wsRef.current.close(); };
+  }, [onMessage, enabled]);
+
+  const send = useCallback((payload) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(payload));
+    }
+  }, []);
+
+  return { send, connected };
+}
+
+/* ============================= STICKY NOTE ============================= */
+function StickyNote({ note, mobile, isRemoteEditing, remoteEditorName, conflict, isOverdue,
+                       onDrag, onDragStart, onEdit, onFocus, onBlur, onDelete,
+                       onSetReminder, onClearReminder, onResolveConflict }) {
+  const dragState = useRef(null);
+  const [showReminderPicker, setShowReminderPicker] = useState(false);
+  const [reminderInput, setReminderInput] = useState(fmtDateTimeLocal(note.reminderAt));
+
+  const handlePointerDown = (e) => {
+    if (mobile) return;
+    if (e.target.tagName === "TEXTAREA" || e.target.tagName === "BUTTON" || e.target.tagName === "INPUT") return;
+    dragState.current = { startX: e.clientX, startY: e.clientY, origX: note.x, origY: note.y };
+    onDragStart(note.id);
+    e.target.setPointerCapture(e.pointerId);
+  };
+  const handlePointerMove = (e) => {
+    if (!dragState.current) return;
+    const dx = e.clientX - dragState.current.startX;
+    const dy = e.clientY - dragState.current.startY;
+    onDrag(note.id, dragState.current.origX + dx, dragState.current.origY + dy);
+  };
+  const handlePointerUp = () => { dragState.current = null; };
+
+  const classNames = [
+    "note",
+    mobile ? "mobile-note" : "",
+    isRemoteEditing ? "remote-editing" : "",
+    isOverdue ? "reminder-due" : "",
+  ].filter(Boolean).join(" ");
+
+  return (
+    <div
+      className={classNames}
+      style={mobile ? { background: note.color } : { left: note.x, top: note.y, background: note.color, zIndex: note.z }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+    >
+      <div className="note-top">
+        <div className="left-badges">
+          {isRemoteEditing && <span className="badge editing">{remoteEditorName} typing…</span>}
+          {isOverdue && <span className="badge overdue">Overdue</span>}
+        </div>
+        <div style={{ display: "flex", gap: 4 }}>
+          <button className="icon-btn" title="Set reminder" onClick={() => setShowReminderPicker((s) => !s)}>⏰</button>
+          <button className="icon-btn" title="Delete note" onClick={() => onDelete(note.id)}>✕</button>
+        </div>
+      </div>
+
+      <textarea
+        value={note.text}
+        placeholder="Type something..."
+        onFocus={() => onFocus(note.id)}
+        onBlur={() => onBlur(note.id)}
+        onChange={(e) => onEdit(note.id, e.target.value)}
+      />
+
+      {note.reminderAt && !showReminderPicker && (
+        <div className="reminder-row">
+          <span className="reminder-chip">⏰ {fmtDisplay(note.reminderAt)}</span>
+        </div>
+      )}
+
+      {showReminderPicker && (
+        <div className="reminder-popover">
+          <input
+            type="datetime-local"
+            value={reminderInput}
+            onChange={(e) => setReminderInput(e.target.value)}
+          />
+          <div className="actions">
+            <button onClick={() => {
+              if (reminderInput) onSetReminder(note.id, new Date(reminderInput).toISOString());
+              setShowReminderPicker(false);
+            }}>Save</button>
+            {note.reminderAt && (
+              <button onClick={() => { onClearReminder(note.id); setShowReminderPicker(false); }}>Clear</button>
+            )}
+            <button onClick={() => setShowReminderPicker(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {conflict && (
+        <div className="conflict-banner">
+          <div>⚠️ Edited elsewhere while you were typing. Their version is shown above.</div>
+          <div className="actions">
+            <button onClick={() => onResolveConflict(note.id, "keepMine", conflict.attemptedText)}>Keep my text</button>
+            <button onClick={() => onResolveConflict(note.id, "dismiss")}>Dismiss</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================= BOARD VIEW ============================= */
+function BoardView({ username, onLogout }) {
+  const [notes, setNotes] = useState({});
+  const [editingBy, setEditingBy] = useState({});     // noteId -> username
+  const [conflicts, setConflicts] = useState({});
+  const [overdue, setOverdue] = useState({});         // noteId -> true
+  const [notifPermission, setNotifPermission] = useState(
+    typeof Notification !== "undefined" ? Notification.permission : "unsupported"
+  );
+  const [isMobile, setIsMobile] = useState(window.matchMedia("(max-width: 680px)").matches);
+
+  const boardRef = useRef(null);
+  const focusedNoteId = useRef(null);
+  const draggingId = useRef(null);
+  const debounceTimers = useRef({});
+  const notifiedRef = useRef(new Set()); // note ids we've already fired a Notification for
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 680px)");
+    const handler = (e) => setIsMobile(e.matches);
+    mq.addEventListener ? mq.addEventListener("change", handler) : mq.addListener(handler);
+    return () => {
+      mq.removeEventListener ? mq.removeEventListener("change", handler) : mq.removeListener(handler);
+    };
+  }, []);
+
+  const handleMessage = useCallback((msg) => {
+    switch (msg.type) {
+      case "sync":
+        setNotes(msg.notes);
+        setEditingBy(msg.editingBy || {});
+        break;
+      case "add":
+        setNotes((prev) => ({ ...prev, [msg.note.id]: msg.note }));
+        break;
+      case "move":
+        setNotes((prev) => {
+          if (draggingId.current === msg.id) return prev;
+          if (!prev[msg.id]) return prev;
+          return { ...prev, [msg.id]: { ...prev[msg.id], x: msg.x, y: msg.y, z: msg.z } };
+        });
+        break;
+      case "edit":
+        setNotes((prev) => {
+          if (!prev[msg.id]) return prev;
+          if (focusedNoteId.current === msg.id) {
+            return { ...prev, [msg.id]: { ...prev[msg.id], version: msg.version } };
+          }
+          return { ...prev, [msg.id]: { ...prev[msg.id], text: msg.text, version: msg.version } };
+        });
+        break;
+      case "edit-ack":
+        setNotes((prev) => prev[msg.id] ? { ...prev, [msg.id]: { ...prev[msg.id], version: msg.version } } : prev);
+        break;
+      case "edit-rejected":
+        setNotes((prev) => prev[msg.id]
+          ? { ...prev, [msg.id]: { ...prev[msg.id], text: msg.text, version: msg.version } } : prev);
+        setConflicts((prev) => ({ ...prev, [msg.id]: { attemptedText: msg.attemptedText } }));
+        break;
+      case "reminder":
+        setNotes((prev) => prev[msg.id] ? { ...prev, [msg.id]: { ...prev[msg.id], reminderAt: msg.reminderAt } } : prev);
+        notifiedRef.current.delete(msg.id); // allow a fresh notification if reminder is reset
+        setOverdue((prev) => { const n = { ...prev }; delete n[msg.id]; return n; });
+        break;
+      case "delete":
+        setNotes((prev) => { const n = { ...prev }; delete n[msg.id]; return n; });
+        break;
+      case "editing-start":
+        if (msg.username !== username) setEditingBy((prev) => ({ ...prev, [msg.id]: msg.username }));
+        break;
+      case "editing-end":
+        setEditingBy((prev) => {
+          if (prev[msg.id] !== msg.username) return prev;
+          const next = { ...prev }; delete next[msg.id]; return next;
+        });
+        break;
+      case "auth-error":
+        onLogout(); // session expired mid-session -> send back to login
+        break;
+      default: break;
+    }
+  }, [username, onLogout]);
+
+  const { send, connected } = useWebSocket(handleMessage, true);
+
+  // Poll for due reminders every 15s and fire a browser Notification once per note
+  useEffect(() => {
+    const check = () => {
+      const now = Date.now();
+      const nowOverdue = {};
+      Object.values(notes).forEach((note) => {
+        if (note.reminderAt && new Date(note.reminderAt).getTime() <= now) {
+          nowOverdue[note.id] = true;
+          if (!notifiedRef.current.has(note.id)) {
+            notifiedRef.current.add(note.id);
+            if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+              new Notification("Sticky note reminder", {
+                body: note.text ? note.text.slice(0, 80) : "A sticky note reminder is due.",
+              });
+            }
+          }
+        }
+      });
+      setOverdue(nowOverdue);
+    };
+    check();
+    const interval = setInterval(check, 15000);
+    return () => clearInterval(interval);
+  }, [notes]);
+
+  const requestNotifPermission = async () => {
+    if (typeof Notification === "undefined") return;
+    const perm = await Notification.requestPermission();
+    setNotifPermission(perm);
+  };
+
+  const addNote = () => {
+    const board = boardRef.current;
+    const x = board && !isMobile ? Math.random() * Math.max(board.clientWidth - 220, 20) : 40;
+    const y = board && !isMobile ? Math.random() * Math.max(board.clientHeight - 180, 20) : 40;
+    send({ type: "add", x, y });
+  };
+
+  const dragStart = (id) => { draggingId.current = id; };
+  const dragNote = (id, x, y) => {
+    setNotes((prev) => (prev[id] ? { ...prev, [id]: { ...prev[id], x, y } } : prev));
+    send({ type: "move", id, x, y });
+  };
+  const focusNote = (id) => { focusedNoteId.current = id; send({ type: "editing-start", id }); };
+  const blurNote = (id) => {
+    if (focusedNoteId.current === id) focusedNoteId.current = null;
+    send({ type: "editing-end", id });
+  };
+  const editNote = (id, text) => {
+    setNotes((prev) => (prev[id] ? { ...prev, [id]: { ...prev[id], text } } : prev));
+    clearTimeout(debounceTimers.current[id]);
+    debounceTimers.current[id] = setTimeout(() => {
+      setNotes((current) => {
+        const note = current[id];
+        if (note) send({ type: "edit", id, text: note.text, baseVersion: note.version });
+        return current;
+      });
+    }, 300);
+  };
+  const setReminder = (id, iso) => {
+    setNotes((prev) => (prev[id] ? { ...prev, [id]: { ...prev[id], reminderAt: iso } } : prev));
+    notifiedRef.current.delete(id);
+    send({ type: "reminder", id, reminderAt: iso });
+  };
+  const clearReminder = (id) => {
+    setNotes((prev) => (prev[id] ? { ...prev, [id]: { ...prev[id], reminderAt: null } } : prev));
+    notifiedRef.current.delete(id);
+    send({ type: "reminder", id, reminderAt: null });
+  };
+  const resolveConflict = (id, choice, attemptedText) => {
+    if (choice === "keepMine") send({ type: "edit-force", id, text: attemptedText });
+    setConflicts((prev) => { const n = { ...prev }; delete n[id]; return n; });
+  };
+  const deleteNote = (id) => {
+    setNotes((prev) => { const n = { ...prev }; delete n[id]; return n; });
+    send({ type: "delete", id });
+  };
+
+  const logout = async () => {
+    await fetch("/api/logout", { method: "POST", credentials: "same-origin" });
+    onLogout();
+  };
+
+  return (
+    <React.Fragment>
+      <header className="appbar">
+        <div className="brand">
+          <span className="emoji">🗒️</span>
+          <h1>Live-Sync Sticky Board</h1>
+          <span className="status">
+            <span className={`dot ${connected ? "connected" : "disconnected"}`}></span>
+            {connected ? "Connected" : "Reconnecting…"}
+          </span>
+        </div>
+        <div className="user-chip">
+          <div className="avatar">{initials(username)}</div>
+          <span style={{ fontSize: 13.5, fontWeight: 600 }}>{username}</span>
+          <button className="logout-btn" onClick={logout}>Log out</button>
+        </div>
+      </header>
+
+      <div className="toolbar">
+        <button className="add-btn" onClick={addNote}>+ Add Sticky Note</button>
+        {notifPermission !== "granted" && notifPermission !== "unsupported" && (
+          <span className="notif-hint">
+            <button onClick={requestNotifPermission}>Enable browser notifications</button> for reminders
+          </span>
+        )}
+      </div>
+
+      <div id="board" className={isMobile ? "mobile" : ""} ref={boardRef}>
+        {Object.values(notes).map((note) => (
+          <StickyNote
+            key={note.id}
+            note={note}
+            mobile={isMobile}
+            isRemoteEditing={!!editingBy[note.id]}
+            remoteEditorName={editingBy[note.id]}
+            conflict={conflicts[note.id]}
+            isOverdue={!!overdue[note.id]}
+            onDrag={dragNote}
+            onDragStart={dragStart}
+            onEdit={editNote}
+            onFocus={focusNote}
+            onBlur={blurNote}
+            onDelete={deleteNote}
+            onSetReminder={setReminder}
+            onClearReminder={clearReminder}
+            onResolveConflict={resolveConflict}
+          />
+        ))}
+      </div>
+      <footer className="hint">
+        Open this page in another tab — notes you add, move, or type here sync live. Your board survives refreshes and restarts.
+      </footer>
+    </React.Fragment>
+  );
+}
+
+/* ============================= APP ROOT ============================= */
+function App() {
+  const [checking, setChecking] = useState(true);
+  const [username, setUsername] = useState(null);
+
+  useEffect(() => {
+    fetch("/api/me", { credentials: "same-origin" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (data) setUsername(data.username); })
+      .finally(() => setChecking(false));
+  }, []);
+
+  if (checking) return null;
+
+  if (!username) {
+    return <AuthView onAuthenticated={(name) => setUsername(name)} />;
+  }
+  return <BoardView username={username} onLogout={() => setUsername(null)} />;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
